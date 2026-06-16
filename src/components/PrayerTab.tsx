@@ -40,6 +40,7 @@ export function PrayerTab() {
 
   useEffect(() => {
     loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayStr])
 
   const handleToggle = async (prayer: keyof Omit<PrayerChecklist, 'id' | 'user_id' | 'prayer_date' | 'notes' | 'custom_prayers'>) => {
@@ -144,13 +145,13 @@ export function PrayerTab() {
         <div className="bg-white/80 backdrop-blur-md p-1.5 rounded-2xl border border-gray-100 flex flex-wrap gap-1">
           {[
             { id: 'wajib', label: '🕌 Wajib' },
-            { id: 'rawatib', label: '✨ Rawatib (Qob/Ba\'d)' },
-            { id: 'sunnah', label: '🌙 Sunnah Umum' },
+            { id: 'rawatib', label: '✨ Rawatib' },
+            { id: 'sunnah', label: '🌙 Sunnah' },
             { id: 'custom', label: '⚙️ Kustom' }
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id as 'wajib' | 'sunnah' | 'rawatib' | 'custom')}
               className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all ${
                 activeTab === tab.id 
                   ? 'bg-emerald-600 text-white shadow-sm' 
