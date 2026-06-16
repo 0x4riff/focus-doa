@@ -12,6 +12,7 @@ export interface PrayerChecklist {
   tahajjud_done: boolean
   duha_done: boolean
   witir_done: boolean
+  custom_prayers: Record<string, boolean> // format: { "qobliyah_subuh": true, "ba'diyah_maghrib": false }
   notes?: string
 }
 
@@ -86,6 +87,7 @@ export async function upsertPrayerChecklist(
       tahajjud_done: updates.tahajjud_done ?? false,
       duha_done: updates.duha_done ?? false,
       witir_done: updates.witir_done ?? false,
+      custom_prayers: updates.custom_prayers ?? {},
       notes: updates.notes ?? '',
     }
 

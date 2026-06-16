@@ -10,11 +10,14 @@ export function PrayerTab() {
   const [history, setHistory] = useState<PrayerChecklist[]>([])
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<string | null>(null)
+  
+  // Custom prayer form states
+  const [newPrayerName, setNewPrayerName] = useState('')
+  const [activeTab, setActiveTab] = useState<'wajib' | 'sunnah' | 'rawatib' | 'custom'>('wajib')
 
   const today = new Date()
   const todayStr = today.toISOString().split('T')[0]
 
-  // Calculate past 7 days range
   const past7Days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
     d.setDate(today.getDate() - i)
@@ -26,11 +29,9 @@ export function PrayerTab() {
     const checklistData = await getPrayerChecklist(todayStr)
     setChecklist(checklistData)
     
-    // Fetch last 7 days history
     const historyData = await getPrayerHistoryRange(past7Days[0], todayStr)
     setHistory(historyData)
     
-    // Default Jakarta coordinates
     const prData = await getPrayerAndHijriData(-6.2088, 106.8456)
     setPrayerData(prData)
     
@@ -41,20 +42,56 @@ export function PrayerTab() {
     loadData()
   }, [todayStr])
 
-  const handleToggle = async (prayer: keyof Omit<PrayerChecklist, 'id' | 'user_id' | 'prayer_date' | 'notes'>) => {
+  const handleToggle = async (prayer: keyof Omit<PrayerChecklist, 'id' | 'user_id' | 'prayer_date' | 'notes' | 'custom_prayers'>) => {
     setActionId(prayer)
     const nextVal = checklist ? !checklist[prayer] : true
     const updated = await upsertPrayerChecklist(todayStr, { [prayer]: nextVal })
     if (updated) {
       setChecklist(updated)
-      // Refresh history data
       const historyData = await getPrayerHistoryRange(past7Days[0], todayStr)
       setHistory(historyData)
     }
     setActionId(null)
   }
 
-  const wajibPrayers: { id: keyof Omit<PrayerChecklist, 'id' | 'user_id' | 'prayer_date' | 'notes'>; label: string; timeKey: string }[] = [
+  const handleToggleCustom = async (key: string) => {
+    setActionId(key)
+    const currentCustom = checklist?.custom_prayers || {}
+    const nextVal = !currentCustom[key]
+    const updated = await upsertPrayerChecklist(todayStr, {
+      custom_prayers: {
+        ...currentCustom,
+        [key]: nextVal
+      }
+    })
+    if (updated) {
+      setChecklist(updated)
+      const historyData = await getPrayerHistoryRange(past7Days[0], todayStr)
+      setHistory(historyData)
+    }
+    setActionId(null)
+  }
+
+  const handleAddCustomPrayer = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newPrayerName.trim()) return
+    const key = newPrayerName.trim()
+    const currentCustom = checklist?.custom_prayers || {}
+    if (currentCustom[key] !== undefined) return // Already exists
+    
+    const updated = await upsertPrayerChecklist(todayStr, {
+      custom_prayers: {
+        ...currentCustom,
+        [key]: false
+      }
+    })
+    if (updated) {
+      setChecklist(updated)
+      setNewPrayerName('')
+    }
+  }
+
+  const wajibPrayers: { id: keyof Omit<PrayerChecklist, 'id' | 'user_id' | 'prayer_date' | 'notes' | 'custom_prayers'>; label: string; timeKey: string }[] = [
     { id: 'fajr_done', label: 'Subuh', timeKey: 'Fajr' },
     { id: 'dhuhr_done', label: 'Dzuhur', timeKey: 'Dhuhr' },
     { id: 'asr_done', label: 'Ashar', timeKey: 'Asr' },
@@ -62,16 +99,27 @@ export function PrayerTab() {
     { id: 'isha_done', label: 'Isya', timeKey: 'Isha' },
   ]
 
-  const sunnahPrayers: { id: keyof Omit<PrayerChecklist, 'id' | 'user_id' | 'prayer_date' | 'notes'>; label: string; desc: string }[] = [
+  const sunnahPrayers: { id: keyof Omit<PrayerChecklist, 'id' | 'user_id' | 'prayer_date' | 'notes' | 'custom_prayers'>; label: string; desc: string }[] = [
     { id: 'tahajjud_done', label: 'Tahajjud', desc: 'Sepertiga malam terakhir' },
     { id: 'duha_done', label: 'Duha', desc: 'Pagi hari setelah matahari terbit' },
     { id: 'witir_done', label: 'Witir', desc: 'Shalat penutup malam' },
   ]
 
+  // Rawatib Sunnah List (Qobliyah & Ba'diyah)
+  const rawatibPrayers = [
+    { key: 'qobliyah_subuh', label: 'Qobliyah Subuh', desc: '2 Rakaat sebelum Subuh (Sangat Utama)' },
+    { key: 'qobliyah_dzuhur', label: 'Qobliyah Dzuhur', desc: '2 atau 4 Rakaat sebelum Dzuhur' },
+    { key: 'ba\'diyah_dzuhur', label: 'Ba\'diyah Dzuhur', desc: '2 atau 4 Rakaat setelah Dzuhur' },
+    { key: 'qobliyah_ashar', label: 'Qobliyah Ashar', desc: '2 atau 4 Rakaat sebelum Ashar' },
+    { key: 'ba\'diyah_maghrib', label: 'Ba\'diyah Maghrib', desc: '2 Rakaat setelah Maghrib' },
+    { key: 'qobliyah_isya', label: 'Qobliyah Isya', desc: '2 Rakaat sebelum Isya' },
+    { key: 'ba\'diyah_isya', label: 'Ba\'diyah Isya', desc: '2 Rakaat setelah Isya' }
+  ]
+
   return (
     <div className="space-y-6 animate-fade-in md:grid md:grid-cols-3 md:gap-6 md:space-y-0">
       
-      {/* Left Column: Schedule and Shalat Wajib/Sunnah */}
+      {/* Left Column: Schedule and Tabs */}
       <div className="md:col-span-2 space-y-6">
         <h2 className="text-xl font-bold text-gray-800 hidden md:block">Ibadah & Jadwal Shalat</h2>
 
@@ -92,86 +140,214 @@ export function PrayerTab() {
           </div>
         )}
 
+        {/* Category Tabs */}
+        <div className="bg-white/80 backdrop-blur-md p-1.5 rounded-2xl border border-gray-100 flex flex-wrap gap-1">
+          {[
+            { id: 'wajib', label: '🕌 Wajib' },
+            { id: 'rawatib', label: '✨ Rawatib (Qob/Ba\'d)' },
+            { id: 'sunnah', label: '🌙 Sunnah Umum' },
+            { id: 'custom', label: '⚙️ Kustom' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all ${
+                activeTab === tab.id 
+                  ? 'bg-emerald-600 text-white shadow-sm' 
+                  : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <div className="flex flex-col items-center py-10 space-y-2">
             <div className="w-6 h-6 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider animate-pulse">Memuat...</span>
           </div>
         ) : (
-          <div className="space-y-6">
-            {/* Shalat Wajib List */}
-            <div className="space-y-2.5">
-              <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Shalat Wajib (5 Waktu)</h3>
-              {wajibPrayers.map((p) => {
-                const isDone = checklist ? checklist[p.id] : false
-                const isToggling = actionId === p.id
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => !isToggling && handleToggle(p.id)}
-                    className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 hover:shadow-sm transition cursor-pointer transform active:scale-[0.99] select-none"
-                  >
-                    <div className="flex items-center space-x-3.5">
-                      <span className="text-xl">🕌</span>
-                      <div>
-                        <h4 className="text-sm font-bold text-gray-800">{p.label}</h4>
-                        <p className="text-[10px] text-gray-400">Tekan untuk mengubah status catatan</p>
+          <div className="space-y-4">
+            
+            {/* 1. Shalat Wajib Tab */}
+            {activeTab === 'wajib' && (
+              <div className="space-y-2.5">
+                {wajibPrayers.map((p) => {
+                  const isDone = checklist ? checklist[p.id] : false
+                  const isToggling = actionId === p.id
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => !isToggling && handleToggle(p.id)}
+                      className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 hover:shadow-sm transition cursor-pointer transform active:scale-[0.99] select-none"
+                    >
+                      <div className="flex items-center space-x-3.5">
+                        <span className="text-xl">🕌</span>
+                        <div>
+                          <h4 className="text-sm font-bold text-gray-800">{p.label}</h4>
+                          <p className="text-[10px] text-gray-400">Tekan untuk mengubah status catatan</p>
+                        </div>
+                      </div>
+                      <div
+                        className={`w-6 h-6 rounded-xl border flex items-center justify-center text-xs transition-all duration-300 ${
+                          isDone ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'border-gray-200'
+                        }`}
+                      >
+                        {isToggling ? (
+                          <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : isDone ? (
+                          '✓'
+                        ) : (
+                          ''
+                        )}
                       </div>
                     </div>
-                    <div
-                      className={`w-6 h-6 rounded-xl border flex items-center justify-center text-xs transition-all duration-300 ${
-                        isDone ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'border-gray-200'
-                      }`}
-                    >
-                      {isToggling ? (
-                        <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : isDone ? (
-                        '✓'
-                      ) : (
-                        ''
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            )}
 
-            {/* Shalat Sunnah List */}
-            <div className="space-y-2.5">
-              <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Shalat Sunnah</h3>
-              {sunnahPrayers.map((p) => {
-                const isDone = checklist ? checklist[p.id] : false
-                const isToggling = actionId === p.id
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => !isToggling && handleToggle(p.id)}
-                    className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 hover:shadow-sm transition cursor-pointer transform active:scale-[0.99] select-none"
-                  >
-                    <div className="flex items-center space-x-3.5">
-                      <span className="text-xl">✨</span>
-                      <div>
-                        <h4 className="text-sm font-bold text-gray-800">{p.label}</h4>
-                        <p className="text-[10px] text-gray-400">{p.desc}</p>
+            {/* 2. Rawatib Tab (Qobliyah & Ba'diyah) */}
+            {activeTab === 'rawatib' && (
+              <div className="space-y-2.5">
+                {rawatibPrayers.map((p) => {
+                  const isDone = checklist?.custom_prayers?.[p.key] || false
+                  const isToggling = actionId === p.key
+                  return (
+                    <div
+                      key={p.key}
+                      onClick={() => !isToggling && handleToggleCustom(p.key)}
+                      className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 hover:shadow-sm transition cursor-pointer transform active:scale-[0.99] select-none"
+                    >
+                      <div className="flex items-center space-x-3.5">
+                        <span className="text-xl">☀️</span>
+                        <div>
+                          <h4 className="text-sm font-bold text-gray-800">{p.label}</h4>
+                          <p className="text-[10px] text-gray-400">{p.desc}</p>
+                        </div>
+                      </div>
+                      <div
+                        className={`w-6 h-6 rounded-xl border flex items-center justify-center text-xs transition-all duration-300 ${
+                          isDone ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'border-gray-200'
+                        }`}
+                      >
+                        {isToggling ? (
+                          <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : isDone ? (
+                          '✓'
+                        ) : (
+                          ''
+                        )}
                       </div>
                     </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* 3. Sunnah Umum Tab */}
+            {activeTab === 'sunnah' && (
+              <div className="space-y-2.5">
+                {sunnahPrayers.map((p) => {
+                  const isDone = checklist ? checklist[p.id] : false
+                  const isToggling = actionId === p.id
+                  return (
                     <div
-                      className={`w-6 h-6 rounded-xl border flex items-center justify-center text-xs transition-all duration-300 ${
-                        isDone ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'border-gray-200'
-                      }`}
+                      key={p.id}
+                      onClick={() => !isToggling && handleToggle(p.id)}
+                      className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 hover:shadow-sm transition cursor-pointer transform active:scale-[0.99] select-none"
                     >
-                      {isToggling ? (
-                        <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : isDone ? (
-                        '✓'
-                      ) : (
-                        ''
-                      )}
+                      <div className="flex items-center space-x-3.5">
+                        <span className="text-xl">🌙</span>
+                        <div>
+                          <h4 className="text-sm font-bold text-gray-800">{p.label}</h4>
+                          <p className="text-[10px] text-gray-400">{p.desc}</p>
+                        </div>
+                      </div>
+                      <div
+                        className={`w-6 h-6 rounded-xl border flex items-center justify-center text-xs transition-all duration-300 ${
+                          isDone ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'border-gray-200'
+                        }`}
+                      >
+                        {isToggling ? (
+                          <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : isDone ? (
+                          '✓'
+                        ) : (
+                          ''
+                        )}
+                      </div>
                     </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* 4. Kustom Shalat Tab */}
+            {activeTab === 'custom' && (
+              <div className="space-y-4">
+                <form onSubmit={handleAddCustomPrayer} className="p-4 bg-white rounded-2xl border border-gray-100 flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    value={newPrayerName}
+                    onChange={(e) => setNewPrayerName(e.target.value)}
+                    placeholder="Nama shalat sunnah kustom (cth: Dhuha 8 Rakaat)"
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none text-gray-800"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl active:scale-95 transition-all"
+                  >
+                    Tambah
+                  </button>
+                </form>
+
+                {(!checklist?.custom_prayers || Object.keys(checklist.custom_prayers).filter(k => !rawatibPrayers.find(r => r.key === k)).length === 0) ? (
+                  <div className="text-center py-8 text-xs text-gray-400 bg-gray-50 border border-dashed rounded-2xl">
+                    Belum ada shalat sunnah kustom harian yang ditambahkan.
                   </div>
-                )
-              })}
-            </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {Object.keys(checklist.custom_prayers)
+                      .filter(k => !rawatibPrayers.find(r => r.key === k))
+                      .map((key) => {
+                        const isDone = checklist.custom_prayers[key]
+                        const isToggling = actionId === key
+                        return (
+                          <div
+                            key={key}
+                            onClick={() => !isToggling && handleToggleCustom(key)}
+                            className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 hover:shadow-sm transition cursor-pointer transform active:scale-[0.99] select-none animate-scale-up"
+                          >
+                            <div className="flex items-center space-x-3.5">
+                              <span className="text-xl">⚙️</span>
+                              <div>
+                                <h4 className="text-sm font-bold text-gray-800">{key}</h4>
+                                <p className="text-[10px] text-gray-400">Shalat sunnah buatanmu</p>
+                              </div>
+                            </div>
+                            <div
+                              className={`w-6 h-6 rounded-xl border flex items-center justify-center text-xs transition-all duration-300 ${
+                                isDone ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'border-gray-200'
+                              }`}
+                            >
+                              {isToggling ? (
+                                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : isDone ? (
+                                '✓'
+                              ) : (
+                                ''
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -180,7 +356,7 @@ export function PrayerTab() {
       <div className="md:col-span-1 space-y-4">
         <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Statistik 7 Hari Terakhir</h3>
         <div className="bg-white/70 backdrop-blur-md p-5 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
-          <p className="text-[10px] text-gray-400 font-medium">Melacak keteraturan ibadah harian Anda</p>
+          <p className="text-[10px] text-gray-400 font-medium">Melacak keteraturan semua jenis ibadah Anda</p>
           
           <div className="space-y-3">
             {past7Days.map((dateStr) => {
@@ -189,19 +365,24 @@ export function PrayerTab() {
               const dateLabel = dateObj.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric' })
               
               // Count completed prayers
-              const doneCount = dayRecord 
-                ? [
-                    dayRecord.fajr_done,
-                    dayRecord.dhuhr_done,
-                    dayRecord.asr_done,
-                    dayRecord.maghrib_done,
-                    dayRecord.isha_done,
-                    dayRecord.tahajjud_done,
-                    dayRecord.duha_done,
-                    dayRecord.witir_done
-                  ].filter(Boolean).length
-                : 0
+              let doneCount = 0
+              if (dayRecord) {
+                const standardPrayers = [
+                  dayRecord.fajr_done,
+                  dayRecord.dhuhr_done,
+                  dayRecord.asr_done,
+                  dayRecord.maghrib_done,
+                  dayRecord.isha_done,
+                  dayRecord.tahajjud_done,
+                  dayRecord.duha_done,
+                  dayRecord.witir_done
+                ].filter(Boolean).length
 
+                const customPrayers = Object.values(dayRecord.custom_prayers || {}).filter(Boolean).length
+                doneCount = standardPrayers + customPrayers
+              }
+
+              // Normalizing progress bar by arbitrary target of 8 prayers done
               const percent = Math.min(Math.round((doneCount / 8) * 100), 100)
 
               return (
@@ -209,7 +390,7 @@ export function PrayerTab() {
                   <div className="flex justify-between items-center text-xs">
                     <span className="font-bold text-gray-700">{dateLabel}</span>
                     <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
-                      {doneCount} Done
+                      {doneCount} Selesai
                     </span>
                   </div>
                   <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
