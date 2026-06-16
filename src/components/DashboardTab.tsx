@@ -10,6 +10,8 @@ export function DashboardTab() {
   const [choghadiya, setChoghadiya] = useState<{ day: ChoghadiyaPeriod[]; night: ChoghadiyaPeriod[] } | null>(null)
   const [prayerData, setPrayerData] = useState<PrayerData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [activeSegment, setActiveSegment] = useState<'day' | 'night'>('day')
+  const [currentPrayer, setCurrentPrayer] = useState<string>('')
 
   useEffect(() => {
     loadDashboardData()
@@ -23,17 +25,50 @@ export function DashboardTab() {
     setJavDate(getJavaneseDate(today))
     
     // 2. Prayer times & Hijri
-    // Use Jakarta fallback coordinate
     const prData = await getPrayerAndHijriData(-6.2088, 106.8456)
     setPrayerData(prData)
 
-    // 3. Choghadiya
+    // 3. Choghadiya & Current Active Period
     if (prData) {
-      // Clean timings by stripping timezone info if present (e.g. "04:45 (WIB)")
       const cleanTime = (t: string) => t.split(' ')[0]
       const sunrise = cleanTime(prData.timings.Sunrise)
       const sunset = cleanTime(prData.timings.Sunset)
       setChoghadiya(calculateChoghadiya(today, sunrise, sunset))
+
+      // Determine current prayer
+      const currentHour = today.getHours()
+      const currentMinute = today.getMinutes()
+      const parseTimeToMinutes = (timeStr: string) => {
+        const [h, m] = cleanTime(timeStr).split(':').map(Number)
+        return h * 60 + m
+      }
+      
+      const nowMinutes = currentHour * 60 + currentMinute
+      const timings = prData.timings
+      const prayerMinutes = {
+        Subuh: parseTimeToMinutes(timings.Fajr),
+        Dzuhur: parseTimeToMinutes(timings.Dhuhr),
+        Ashar: parseTimeToMinutes(timings.Asr),
+        Maghrib: parseTimeToMinutes(timings.Maghrib),
+        Isya: parseTimeToMinutes(timings.Isha)
+      }
+
+      if (nowMinutes >= prayerMinutes.Isya || nowMinutes < prayerMinutes.Subuh) {
+        setCurrentPrayer('Isya')
+        setActiveSegment('night')
+      } else if (nowMinutes >= prayerMinutes.Maghrib) {
+        setCurrentPrayer('Maghrib')
+        setActiveSegment('night')
+      } else if (nowMinutes >= prayerMinutes.Ashar) {
+        setCurrentPrayer('Ashar')
+        setActiveSegment('day')
+      } else if (nowMinutes >= prayerMinutes.Dzuhur) {
+        setCurrentPrayer('Dzuhur')
+        setActiveSegment('day')
+      } else {
+        setCurrentPrayer('Subuh')
+        setActiveSegment('day')
+      }
     } else {
       setChoghadiya(calculateChoghadiya(today))
     }
@@ -42,80 +77,149 @@ export function DashboardTab() {
   }
 
   if (loading) {
-    return <div className="text-center py-10 text-sm text-gray-500">Memuat dashboard...</div>
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-3">
+        <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-xs text-gray-500 font-medium animate-pulse">Menyiapkan halaman...</p>
+      </div>
+    )
   }
 
   const today = new Date()
   const masehiStr = today.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
+  const cardColors: Record<ChoghadiyaPeriod['quality'], { bg: string; text: string; dot: string; labelBg: string }> = {
+    excellent: { bg: 'bg-emerald-50/60 hover:bg-emerald-50', text: 'text-emerald-800', dot: 'bg-emerald-500', labelBg: 'bg-emerald-100/80 text-emerald-800' },
+    good: { bg: 'bg-teal-50/60 hover:bg-teal-50', text: 'text-teal-800', dot: 'bg-teal-500', labelBg: 'bg-teal-100/80 text-teal-800' },
+    beneficial: { bg: 'bg-cyan-50/60 hover:bg-cyan-50', text: 'text-cyan-800', dot: 'bg-cyan-500', labelBg: 'bg-cyan-100/80 text-cyan-800' },
+    neutral: { bg: 'bg-blue-50/60 hover:bg-blue-50', text: 'text-blue-800', dot: 'bg-blue-500', labelBg: 'bg-blue-100/80 text-blue-800' },
+    rest: { bg: 'bg-amber-50/60 hover:bg-amber-50', text: 'text-amber-800', dot: 'bg-amber-500', labelBg: 'bg-amber-100/80 text-amber-800' },
+    review: { bg: 'bg-indigo-50/60 hover:bg-indigo-50', text: 'text-indigo-800', dot: 'bg-indigo-500', labelBg: 'bg-indigo-100/80 text-indigo-800' },
+    reflect: { bg: 'bg-purple-50/60 hover:bg-purple-50', text: 'text-purple-800', dot: 'bg-purple-500', labelBg: 'bg-purple-100/80 text-purple-800' },
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header Info */}
-      <div className="bg-emerald-600 text-white p-5 rounded-3xl space-y-2">
-        <p className="text-xs font-medium opacity-90">Muslim Daily Focus & Productivity</p>
-        <h2 className="text-xl font-bold">{masehiStr}</h2>
-        {prayerData && javDate && (
-          <div className="flex flex-wrap gap-2 text-xs pt-1.5 opacity-95">
-            <span className="bg-emerald-700/50 px-2.5 py-1 rounded-full">
-              🌙 {prayerData.date.hijri.day} {prayerData.date.hijri.month.en} {prayerData.date.hijri.year} H
+    <div className="space-y-8 animate-fadeIn duration-500">
+      {/* Modern Dashboard Header */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-800 text-white p-7 rounded-[2.5rem] shadow-xl shadow-emerald-900/10">
+        {/* Soft background glow circles */}
+        <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute -bottom-20 -left-20 w-52 h-52 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] tracking-widest font-extrabold uppercase bg-white/10 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/10">
+              Muslim Daily Focus
             </span>
-            <span className="bg-emerald-700/50 px-2.5 py-1 rounded-full">
-              🌾 {javDate.hari} {javDate.pasaran}
-            </span>
+            <span className="text-2xl animate-pulse">🌱</span>
           </div>
-        )}
+
+          <div className="space-y-1">
+            <h2 className="text-2xl font-black tracking-tight">{masehiStr}</h2>
+            {prayerData && javDate && (
+              <div className="flex flex-wrap gap-2 text-xs pt-2">
+                <span className="bg-white/10 backdrop-blur-md px-3 py-1 rounded-2xl border border-white/5 font-medium flex items-center gap-1.5">
+                  <span>🌙</span> {prayerData.date.hijri.day} {prayerData.date.hijri.month.en} {prayerData.date.hijri.year} H
+                </span>
+                <span className="bg-white/10 backdrop-blur-md px-3 py-1 rounded-2xl border border-white/5 font-medium flex items-center gap-1.5">
+                  <span>🌾</span> {javDate.hari} {javDate.pasaran}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Prayer Schedule Widget */}
+      {/* Modern Card-Based Prayer Schedule */}
       {prayerData && (
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 space-y-3">
-          <h3 className="text-xs font-bold text-gray-500">Jadwal Shalat</h3>
-          <div className="grid grid-cols-5 gap-2 text-center">
+        <div className="bg-white/70 backdrop-blur-md p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
+          <div className="flex justify-between items-center px-1">
+            <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Jadwal Shalat</h3>
+            <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2.5 py-1 rounded-lg">
+              Kota Jakarta
+            </span>
+          </div>
+
+          <div className="grid grid-cols-5 gap-2.5">
             {[
               { label: 'Subuh', key: 'Fajr' },
               { label: 'Dzuhur', key: 'Dhuhr' },
               { label: 'Ashar', key: 'Asr' },
               { label: 'Maghrib', key: 'Maghrib' },
               { label: 'Isya', key: 'Isha' },
-            ].map((pr) => (
-              <div key={pr.key} className="bg-gray-50 p-2 rounded-xl">
-                <p className="text-[10px] text-gray-500 font-medium">{pr.label}</p>
-                <p className="text-xs font-bold text-emerald-600 mt-0.5">
-                  {prayerData.timings[pr.key as keyof typeof prayerData.timings] || '--:--'}
-                </p>
-              </div>
-            ))}
+            ].map((pr) => {
+              const isCurrent = currentPrayer === pr.label
+              return (
+                <div
+                  key={pr.key}
+                  className={`p-3 rounded-2xl transition-all duration-300 transform active:scale-95 ${
+                    isCurrent 
+                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/10 scale-105 border border-emerald-500' 
+                      : 'bg-gray-50/50 hover:bg-gray-50 border border-gray-100/50'
+                  }`}
+                >
+                  <p className={`text-[10px] font-bold ${isCurrent ? 'text-emerald-100' : 'text-gray-400'}`}>
+                    {pr.label}
+                  </p>
+                  <p className="text-xs font-black tracking-tight mt-1.5">
+                    {prayerData.timings[pr.key as keyof typeof prayerData.timings]?.split(' ')[0] || '--:--'}
+                  </p>
+                  {isCurrent && (
+                    <span className="block w-1.5 h-1.5 bg-white rounded-full mx-auto mt-2 animate-ping" />
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
 
-      {/* Focus Time / Choghadiya Widget */}
+      {/* Segmented Focus Waktu Fokus (Choghadiya) */}
       {choghadiya && (
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 space-y-3">
-          <div>
-            <h3 className="text-xs font-bold text-gray-500">Pembagian Waktu Fokus (Choghadiya)</h3>
-            <p className="text-[10px] text-gray-400 mt-0.5">Mengatur prioritas berdasarkan siklus jam harian</p>
+        <div className="bg-white/70 backdrop-blur-md p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-5">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 px-1">
+            <div>
+              <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Pembagian Waktu Fokus</h3>
+              <p className="text-[10px] text-gray-400 mt-1">Gunakan siklus Choghadiya harian untuk merencanakan target</p>
+            </div>
+            
+            {/* Minimalist Tab Toggle */}
+            <div className="bg-gray-100/80 p-1 rounded-xl flex self-start">
+              <button
+                onClick={() => setActiveSegment('day')}
+                className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all ${
+                  activeSegment === 'day' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                ☀️ Siang
+              </button>
+              <button
+                onClick={() => setActiveSegment('night')}
+                className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all ${
+                  activeSegment === 'night' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                🌙 Malam
+              </button>
+            </div>
           </div>
           
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {choghadiya.day.map((p, idx) => {
-              const borderColors = {
-                excellent: 'border-l-emerald-500',
-                good: 'border-l-teal-500',
-                beneficial: 'border-l-cyan-500',
-                neutral: 'border-l-blue-400',
-                rest: 'border-l-amber-500',
-                review: 'border-l-indigo-400',
-                reflect: 'border-l-purple-500',
-              }
-
+          <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+            {(activeSegment === 'day' ? choghadiya.day : choghadiya.night).map((p, idx) => {
+              const colors = cardColors[p.quality]
               return (
-                <div key={idx} className={`p-2.5 bg-gray-50 rounded-xl border-l-4 ${borderColors[p.quality]} flex justify-between items-center text-xs`}>
-                  <div>
-                    <p className="font-semibold text-gray-800">{p.label}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Siang • Periode ke-{idx + 1}</p>
+                <div
+                  key={idx}
+                  className={`p-3.5 ${colors.bg} rounded-2xl border border-gray-100/30 flex justify-between items-center text-xs transition-all duration-300 transform hover:-translate-y-0.5 active:scale-[0.99]`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className={`w-2 h-2 rounded-full ${colors.dot}`} />
+                    <div>
+                      <p className={`font-bold ${colors.text}`}>{p.label.split(' (')[0]}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{p.label.includes('(') ? p.label.split('(')[1].replace(')', '') : 'Rutinitas'}</p>
+                    </div>
                   </div>
-                  <p className="font-medium text-gray-600 bg-white px-2 py-0.5 rounded border border-gray-100">
+                  <p className="font-bold text-gray-700 bg-white/80 backdrop-blur px-2.5 py-1 rounded-xl border border-gray-100 text-[10px] tracking-tight">
                     {p.start} - {p.end}
                   </p>
                 </div>
