@@ -9,6 +9,9 @@ export interface PrayerChecklist {
   asr_done: boolean
   maghrib_done: boolean
   isha_done: boolean
+  tahajjud_done: boolean
+  duha_done: boolean
+  witir_done: boolean
   notes?: string
 }
 
@@ -28,6 +31,22 @@ export async function getPrayerChecklist(dateStr: string): Promise<PrayerCheckli
     return null
   }
   return data
+}
+
+export async function getPrayerHistoryRange(startDate: string, endDate: string): Promise<PrayerChecklist[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('prayer_checklists')
+    .select('*')
+    .gte('prayer_date', startDate)
+    .lte('prayer_date', endDate)
+    .order('prayer_date', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching prayer history range:', error)
+    return []
+  }
+  return data || []
 }
 
 export async function upsertPrayerChecklist(
@@ -64,6 +83,9 @@ export async function upsertPrayerChecklist(
       asr_done: updates.asr_done ?? false,
       maghrib_done: updates.maghrib_done ?? false,
       isha_done: updates.isha_done ?? false,
+      tahajjud_done: updates.tahajjud_done ?? false,
+      duha_done: updates.duha_done ?? false,
+      witir_done: updates.witir_done ?? false,
       notes: updates.notes ?? '',
     }
 
